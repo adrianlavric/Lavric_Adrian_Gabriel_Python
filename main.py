@@ -3,6 +3,8 @@ import os
 import shutil
 from datetime import datetime
 import zipfile
+import pygame
+import time
 
 USER = "postgres"
 PASSWORD = "postgres"
@@ -294,6 +296,73 @@ def create_save_list(archive_path, criteria):
         print(f"Error creating save_list: {e}")
 
 
+def play_song(song_id):
+    try:
+        conn = pg8000.connect(user=USER, password=PASSWORD, host=HOST, database=DB)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT file_name FROM songs WHERE id = %s", (song_id,))
+        result = cursor.fetchone()
+        if not result:
+            print(f"Error: There is no song with ID {song_id}.")
+            return
+
+        file_name = result[0]
+        song_path = os.path.join("Storage", file_name)
+
+        if os.path.exists(song_path):
+            pygame.init()
+            window_size = (700, 350)
+            pygame.display.set_mode(window_size)
+            pygame.display.set_caption(f"{file_name}")
+
+            pygame.mixer.init()
+            pygame.mixer.music.load(song_path)
+            pygame.mixer.music.play()
+
+            song_length = pygame.mixer.Sound(song_path).get_length()
+            print(f"Playing '{file_name}'. Press left/right arrow keys to rewind/forward and ESC to stop.")
+
+            start_time = time.time()
+            running = True
+            while running:
+                for event in pygame.event.get():
+                    if event.type == pygame.KEYDOWN:
+                        passed_time = (time.time() - start_time) + pygame.mixer.music.get_pos() / 1000.0
+                        if event.key == pygame.K_LEFT:
+                            rewind_to = max(0, passed_time - 10)
+                            pygame.mixer.music.stop()
+                            pygame.mixer.music.play(start=rewind_to)
+                            start_time = time.time() - rewind_to
+                        elif event.key == pygame.K_RIGHT:
+                            forward_to = passed_time + 10
+                            if forward_to >= song_length:
+                                print("Song finished playing.")
+                                pygame.mixer.music.stop()
+                                running = False
+                            else:
+                                pygame.mixer.music.stop()
+                                pygame.mixer.music.play(start=forward_to)
+                                start_time = time.time() - forward_to
+                        elif event.key == pygame.K_ESCAPE:
+                            pygame.mixer.music.stop()
+                            print("Song stopped playing.")
+                            running = False
+                pygame.time.wait(100)
+
+            pygame.quit()
+        else:
+            print(f"Error: There is no song {file_name}.")
+
+        cursor.close()
+        conn.close()
+
+    except pg8000.dbapi.DatabaseError as e:
+        print(f"Database 'songstorage' error: {e}")
+    except Exception as e:
+        print(f"Error playing song: {e}")
+
+
 def main():
     database_setup()
     create_folder()
@@ -337,6 +406,12 @@ def main():
             archive_path = input("Enter archive path: ").strip()
             criteria = input("Enter search criteria (e.g., artist=Kanye, song_name=Wolves): ").strip()
             create_save_list(archive_path, criteria)
+        elif command == "play":
+            song_id = input("Enter song ID: ").strip()
+            if song_id.isdigit():
+                play_song(int(song_id))
+            else:
+                print("Error: Invalid ID.")
         elif command != "quit" :
             print("Error: Invalid command, type 'help'.")
 
