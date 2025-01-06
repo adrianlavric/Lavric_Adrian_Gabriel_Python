@@ -103,6 +103,39 @@ def add_song(song_path, artist, song_name, release_date, tags):
         print(f"Error adding song: {e}")
 
 
+def delete_song(song_id):
+    try:
+        conn = pg8000.connect(user=USER, password=PASSWORD, host=HOST, database=DB)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT file_name FROM songs WHERE id = %s", (song_id,))
+        result = cursor.fetchone()
+        if not result:
+            print(f"Error: There is no song with ID {song_id}.")
+            return
+
+        file_name = result[0]
+        song_path = os.path.join("Storage", file_name)
+
+        if os.path.exists(song_path):
+            os.remove(song_path)
+            print(f"Song '{file_name}' was deleted.")
+        else:
+            print(f"Error: Song '{file_name}' not found.")
+
+        cursor.execute("DELETE FROM songs WHERE id = %s", (song_id,))
+        conn.commit()
+        print(f"Song {song_id} was deleted.")
+
+        cursor.close()
+        conn.close()
+
+    except pg8000.dbapi.DatabaseError as e:
+        print(f"Database 'songstorage' error: {e}")
+    except Exception as e:
+        print(f"Error deleting song: {e}")
+
+
 def main():
     database_setup()
     create_folder()
@@ -127,8 +160,14 @@ def main():
             release_date = input("Enter release date <YYYY-MM-DD>: ").strip()
             tags = input("Enter tags separated by ',': ").strip().split(',')
             add_song(song_path, artist, song_name, release_date, tags)
+        elif command == "delete_song":
+            song_id = input("Enter song ID: ").strip()
+            if song_id.isdigit():
+                delete_song(int(song_id))
+            else:
+                print("Error: Invalid ID.")
         elif command != "quit" :
-            print("Invalid command. Type 'help'.")
+            print("Error: Invalid command, type 'help'.")
 
 
 if __name__ == "__main__":
