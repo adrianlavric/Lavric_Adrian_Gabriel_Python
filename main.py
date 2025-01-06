@@ -136,6 +136,45 @@ def delete_song(song_id):
         print(f"Error deleting song: {e}")
 
 
+def modify_data(song_id):
+    try:
+        conn = pg8000.connect(user=USER, password=PASSWORD, host=HOST, database=DB)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM songs WHERE id = %s", (song_id,))
+        result = cursor.fetchone()
+        if not result:
+            print(f"Error: There is no song with ID {song_id}.")
+            return
+
+        print("Enter new value or press enter to not modify:")
+        artist = input(f"Artist [{result[2]}]: ").strip() or result[2]
+        song_name = input(f"Song Name [{result[3]}]: ").strip() or result[3]
+        release_date = input(f"Release Date [{result[4]}]: ").strip() or result[4]
+        try:
+            if release_date and release_date != result[4]:
+                datetime.strptime(release_date, "%Y-%m-%d")
+        except ValueError:
+            print("Error: Invalid date format.")
+            return
+        tags_input = input(f"Tags separated by ',' [{', '.join(result[5])}]: ").strip()
+        tags = tags_input.split(',') if tags_input else result[5]
+
+        cursor.execute(
+            """UPDATE songs SET artist = %s, song_name = %s, release_date = %s, tags = %s WHERE id = %s""",
+            (artist, song_name, release_date, tags, song_id)
+        )
+        conn.commit()
+        print(f"Song {song_id} was updated.")
+
+        cursor.close()
+        conn.close()
+
+    except pg8000.dbapi.DatabaseError as e:
+        print(f"Database 'songstorage' error: {e}")
+    except Exception as e:
+        print(f"Error modifying song data: {e}")
+
 def main():
     database_setup()
     create_folder()
@@ -164,6 +203,12 @@ def main():
             song_id = input("Enter song ID: ").strip()
             if song_id.isdigit():
                 delete_song(int(song_id))
+            else:
+                print("Error: Invalid ID.")
+        elif command == "modify_data":
+            song_id = input("Enter song ID: ").strip()
+            if song_id.isdigit():
+                modify_data(int(song_id))
             else:
                 print("Error: Invalid ID.")
         elif command != "quit" :
