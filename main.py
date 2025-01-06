@@ -175,6 +175,62 @@ def modify_data(song_id):
     except Exception as e:
         print(f"Error modifying song data: {e}")
 
+
+def search(criteria):
+    try:
+        conn = pg8000.connect(user=USER, password=PASSWORD, host=HOST, database=DB)
+        cursor = conn.cursor()
+
+        query = "SELECT * FROM songs WHERE "
+        params = []
+        conditions = []
+
+        for criterion in criteria.split(','):
+            key, value = map(str.strip, criterion.split('='))
+            if key.lower() == "artist":
+                conditions.append("artist ILIKE %s")
+                params.append(f"%{value}%")
+            elif key.lower() == "song_name":
+                conditions.append("song_name ILIKE %s")
+                params.append(f"%{value}%")
+            elif key.lower() == "release_date":
+                conditions.append("release_date = %s")
+                params.append(value)
+            elif key.lower() == "tags":
+                conditions.append("%s = ANY(tags)")
+                params.append(value)
+            elif key.lower() == "file_name":
+                conditions.append("file_name ILIKE %s")
+                params.append(f"%{value}%")
+            else:
+                print(f"Error: Invalid criterion '{key}'.")
+
+        if conditions:
+            query += " AND ".join(conditions)
+        else:
+            print("Error: Invalid criteria.")
+            return
+
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+
+        if results:
+            print(f"Results found - {len(results)}:")
+            for row in results:
+                print(
+                    f"ID: {row[0]}, File_name: {row[1]}, Artist: {row[2]}, Song_name: {row[3]}, Release_date: {row[4]}, Tags: {', '.join(row[5])}")
+        else:
+            print("No song found.")
+
+        cursor.close()
+        conn.close()
+
+    except pg8000.dbapi.DatabaseError as e:
+        print(f"Database 'songstorage' error: {e}")
+    except Exception as e:
+        print(f"Error searching for song: {e}")
+
+
 def main():
     database_setup()
     create_folder()
@@ -211,6 +267,9 @@ def main():
                 modify_data(int(song_id))
             else:
                 print("Error: Invalid ID.")
+        elif command == "search":
+            criteria = input("Enter search criteria (e.g., artist=Kanye, song_name=Wolves): ").strip()
+            search(criteria)
         elif command != "quit" :
             print("Error: Invalid command, type 'help'.")
 
