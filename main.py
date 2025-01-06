@@ -1,10 +1,14 @@
 import pg8000
 import os
+import shutil
+from datetime import datetime
 
 USER = "postgres"
 PASSWORD = "postgres"
 HOST = "localhost"
 DB = "songstorage"
+
+SONG_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".aiff", ".mp4"}
 
 table_setup_query = """
 CREATE TABLE IF NOT EXISTS songs (
@@ -41,7 +45,7 @@ def database_setup():
         conn.close()
 
     except pg8000.dbapi.DatabaseError as e:
-        print(f"Error setting up database 'song_storage': {e}")
+        print(f"Database 'song_storage' error: {e}")
 
 
 def create_folder():
@@ -53,9 +57,78 @@ def create_folder():
         print(f"Storage folder exists.")
 
 
+def add_song(song_path, artist, song_name, release_date, tags):
+    try:
+        if not os.path.isfile(song_path):
+            print("Error: The file does not exist or is a directory.")
+            return
+        if not os.path.splitext(song_path)[1].lower() in SONG_EXTENSIONS:
+            print("Error: The file is not a valid song.")
+            return
+        try:
+            datetime.strptime(release_date, "%Y-%m-%d")
+        except ValueError:
+            print("Error: Invalid date format.")
+            return
+        if not artist or not song_name:
+            print("Error: Missing artist or song name.")
+            return
+        if not tags or all(tag.strip() == "" for tag in tags):
+            print("Error: Missing tags.")
+            return
+
+        conn = pg8000.connect(user=USER, password=PASSWORD, host=HOST, database=DB)
+        cursor = conn.cursor()
+
+        storage_path = os.path.join("Storage", os.path.basename(song_path))
+        if not os.path.exists(storage_path):
+            shutil.copy(song_path, storage_path)
+            print(f"Song '{song_path}' was added to storage.")
+
+        cursor.execute(
+            """INSERT INTO songs (file_name, artist, song_name, release_date, tags) 
+            VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+            (os.path.basename(song_path), artist, song_name, release_date, tags)
+        )
+        song_id = cursor.fetchone()[0]
+        conn.commit()
+        print(f"Song {song_id} was added to storage.")
+
+        cursor.close()
+        conn.close()
+
+    except pg8000.dbapi.DatabaseError as e:
+        print(f"Database 'songstorage' error: {e}")
+    except Exception as e:
+        print(f"Error adding song: {e}")
+
+
 def main():
     database_setup()
     create_folder()
+
+    print("SongStorage: type 'help' to see the available commands.")
+    command = ""
+    while command.lower().strip() != "quit":
+        command = input("Enter command: ").lower().strip()
+        if command == "help":
+            print("Available commands:\n"
+                  "- Add_song <path> <metadata>\n"
+                  "- Delete_song <id>\n"
+                  "- Modify_data <id>\n"
+                  "- Search <criteria>\n"
+                  "- Create_save_list <criteria>\n"
+                  "- Play <id>\n"
+                  "- Quit")
+        elif command == "add_song":
+            song_path = input("Enter path: ").strip()
+            artist = input("Enter artist: ").strip()
+            song_name = input("Enter song name: ").strip()
+            release_date = input("Enter release date <YYYY-MM-DD>: ").strip()
+            tags = input("Enter tags separated by ',': ").strip().split(',')
+            add_song(song_path, artist, song_name, release_date, tags)
+        elif command != "quit" :
+            print("Invalid command. Type 'help'.")
 
 
 if __name__ == "__main__":
